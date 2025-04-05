@@ -1,20 +1,16 @@
 import uuid
 from PyQt5.QtGui import QColor, QKeyEvent
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QTime
 from PyQt5.QtWidgets import (
     QMessageBox,
     QHBoxLayout,
     QWidget,
     QLabel,
-    QWidget,
-    QHBoxLayout,
     QPushButton,
     QTimeEdit,
+    QMenu,
 )
-from PyQt5.QtCore import QTime
-
-from src.time_management.helpers import get_current_time_in_seconds
-
+from PyQt5.QtWidgets import QApplication
 
 class TimeEditRow(QWidget):
     def __init__(self, parent, identifier=None, from_time=None, to_time=None):
@@ -52,6 +48,8 @@ class TimeEditRow(QWidget):
         self.from_time_edit = QTimeEdit()
         self.from_time_edit.setDisplayFormat("HH:mm:ss")
         self.from_time_edit.setMinimumHeight(25)
+        self.from_time_edit.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.from_time_edit.customContextMenuRequested.connect(self.show_context_menu)
         from_layout.addWidget(self.from_time_edit)
         self.row_layout.addWidget(from_container)
 
@@ -69,8 +67,26 @@ class TimeEditRow(QWidget):
         self.to_time_edit = QTimeEdit()
         self.to_time_edit.setDisplayFormat("HH:mm:ss")
         self.to_time_edit.setMinimumHeight(25)
+        self.to_time_edit.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.to_time_edit.customContextMenuRequested.connect(self.show_context_menu)
         to_layout.addWidget(self.to_time_edit)
         self.row_layout.addWidget(to_container)
+
+    def show_context_menu(self, pos):
+        context_menu = QMenu(self)
+        set_time_action = context_menu.addAction("Set to Current Time")
+        copy_time_action = context_menu.addAction("Copy Time")
+        action = context_menu.exec_(self.sender().mapToGlobal(pos))
+        
+        if action == set_time_action:
+            self.sender().setTime(QTime.currentTime())
+            self.timespan_editor.workulator.save_editor_values_to_database(self)
+        
+        elif action == copy_time_action:
+            time_qtime = self.sender().time()
+            time_str = time_qtime.toString("HH:mm")
+            clipboard = QApplication.clipboard()
+            clipboard.setText(time_str)
 
     def add_buttons(self) -> None:
         button_container = QWidget()
@@ -79,6 +95,7 @@ class TimeEditRow(QWidget):
         button_container.setLayout(button_layout)
         self.delete_button = QPushButton("Delete", self)
         self.delete_button.setToolTip("Ctrl / Cmd + D")
+        self.delete_button.setMinimumHeight(25)
         self.delete_button.clicked.connect(self.delete_row)
         self.start_button = QPushButton("", self)
         self.start_button.setToolTip("Ctrl / Cmd + S")
@@ -92,18 +109,18 @@ class TimeEditRow(QWidget):
     def set_times(self) -> None:
         now = QTime.currentTime()
         zero_time = QTime(0, 0)
-
+        
         if self.to_time is not None and self.from_time is not None:
             t = zero_time.addSecs(self.to_time)
             self.to_time_edit.setTime(t)
             t = zero_time.addSecs(self.from_time)
             self.from_time_edit.setTime(t)
-
+        
         else:
             self.to_time_edit.setTime(now)
             self.from_time_edit.setTime(now)
             self.timespan_editor.workulator.save_editor_values_to_database(self)
-
+        
         self.from_time_edit.timeChanged.connect(self.on_from_time_changed)
         self.to_time_edit.timeChanged.connect(self.on_to_time_changed)
 
@@ -112,7 +129,7 @@ class TimeEditRow(QWidget):
         to_time = self.to_time_edit.time()
         if to_time.secsTo(time) > 0:
             self.from_time_edit.setTime(to_time)
-
+        
         self.timespan_editor.workulator.save_editor_values_to_database(self)
 
     def on_to_time_changed(self, time: QTime) -> None:
@@ -120,7 +137,7 @@ class TimeEditRow(QWidget):
         from_time = self.from_time_edit.time()
         if time.secsTo(from_time) > 0:
             self.to_time_edit.setTime(from_time)
-
+        
         self.timespan_editor.workulator.save_editor_values_to_database(self)
 
     def set_button_to_start(self, button: QPushButton) -> None:
@@ -143,23 +160,23 @@ class TimeEditRow(QWidget):
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No,
         )
-
+        
         if reply == QMessageBox.Yes:
             if self.is_active:
                 self.timespan_editor.active_timer.toggle_timer()
-
+            
             self.timespan_editor.workulator.database.delete_time_entry(self.identifier)
             self.timespan_editor.rows.remove(self)
             self.deleteLater()
 
     def toggle_timer(self) -> None:
         self.timespan_editor.unset_active_timer(self)
-
+        
         if not self.is_active:
             self.set_button_to_stop(self.start_button)
             self.timespan_editor.set_active_timer(self)
             self.is_active = True
-
+        
         else:
             self.set_button_to_start(self.start_button)
             self.is_active = False
@@ -172,11 +189,11 @@ class TimeEditRow(QWidget):
     def keyPressEvent(self, event: QKeyEvent | None) -> None:
         # Add Hotkeys
         mods = event.modifiers()
-
+        
         if event.key() == Qt.Key_D and (mods & Qt.ControlModifier):
             self.delete_row()
-
+        
         if event.key() == Qt.Key_S and (mods & Qt.ControlModifier):
             self.toggle_timer()
-
+        
         return super().keyPressEvent(event)
